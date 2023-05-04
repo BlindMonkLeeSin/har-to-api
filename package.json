@@ -1,0 +1,33 @@
+{
+  "name": "har-to-api",
+  "version": "1.0.1",
+  "description": "This is a tool to convert har into api according to template",
+  "main": "index.ts",
+  "bin": {
+    "har-to-api": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup main/cli.ts",
+    "prepublish": "npm run build"
+  },
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:BlindMonkLeeSin/har-to-api.git"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "main"
+  ],
+  "devDependencies": {
+    "@types/node": "^18.16.0",
+    "ts-node": "^10.9.1",
+    "tsup": "^6.7.0",
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "commander": "^10.0.1"
+  }
+}
