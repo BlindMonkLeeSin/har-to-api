@@ -39,6 +39,7 @@ export default [${functionName}()];
   },
   // har 文件路径
   harPath: "./*.har",
+  prefix: "/api/v1",
 };
 ```
 
@@ -61,3 +62,4 @@ npx har-to-api
 | supportMethods    | string[]`([.get])`                                                                       | har 文件中支持的请求类型                                                                                                                                                                                                               |
 | cover             | boolean`(false)` &#124; { api: boolean, data: boolean }                                  | 是否覆盖掉已经生成的内容                                                                                                                                                                                                               |
 | dynamicApiList    | string[]                                                                                 | `某些接口的路径部分是动态的，对于数字类型的比较好处理，但是对于是字符串类型的就不好处理了，所以提供了这样一个属性。例：dynamicApiList: ["/api/v1/dashboard/scan/:container-name/vulnerabilities"]，这样就能方便的提取出其中动态的部分` |
+| prefix            | string`('')`                                                                             | 匹配的接口前缀，生成的方法名不含该前缀                                                                                                                                                                                                 |

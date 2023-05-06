@@ -7,30 +7,29 @@ require.extensions[".har"] = require.extensions[".json"];
 
 type Method = "get" | "post" | "patch" | "put" | "delete";
 
-function stringToCamel(str: string): string {
-  if (str.includes("-")) {
-    return str
-      .split("-")
-      .map((item) => stringToCamel(item))
-      .join("");
-  }
-  if (str.includes("_")) {
-    return str
-      .split("_")
-      .map((item) => stringToCamel(item))
-      .join("");
-  }
-  return str.slice(0, 1).toUpperCase() + str.slice(1).toLowerCase();
+function stringToCamel(str: string, delimiters: string[]): string {
+  const stringToCamelHelper = (str: string) =>
+    str.slice(0, 1).toUpperCase() + str.slice(1).toLowerCase();
+  return delimiters.reduce((formattedString, delimiter) => {
+    return formattedString.includes(delimiter)
+      ? str
+          .split(delimiter)
+          .map((item) => stringToCamel(stringToCamelHelper(item), delimiters))
+          .join("")
+      : formattedString;
+  }, stringToCamelHelper(str));
 }
 
 function getFunctionNameByAPI(api: string, method: Method) {
-  // 'api/v1/test/:id_./:c'.match(/([\w\.-]+)/g) => ['id_.', 'c']
+  const delimiters = ["-", "_"];
+  // '/test/:id_./:c'.match(/(?<=:)[\w\.\-]+/g) => ['id_.', 'c']
   const dynamicWords = api
-    .match(/(?<=:)[\w\.-]+/g)
-    ?.map((item) => stringToCamel(item));
-  // 'api/v1/test/:id_./:c'.match(/([\w\.-]+)/g) => ['api', 'v1', 'test', 'id_.', 'c']
-  const words = api.match(/([\w\.-]+)/g)?.map((item) => stringToCamel(item));
-  words?.splice(0, 2);
+    .match(/(?<=:)[\w\.\-]+/g)
+    ?.map((item) => stringToCamel(item, delimiters));
+  // '/test/:id_./:c'.match(/([\w\.-]+)/g) => ['test', 'id_.', 'c']
+  const words = api
+    .match(/([\w\.\-]+)/g)
+    ?.map((item) => stringToCamel(item, delimiters));
   if (Array.isArray(dynamicWords)) {
     const lastDynamicWord = dynamicWords[dynamicWords.length - 1];
     const filteredWords = words?.filter((word) => !dynamicWords.includes(word));
@@ -71,6 +70,7 @@ export type Config = {
         data: boolean;
       };
   dynamicApiList?: string[];
+  prefix?: string;
 };
 
 type Item = { text: string; dir: string; api: string; method: Method };
@@ -90,6 +90,7 @@ class GenerateCode {
       cover: false,
       dynamicApiList: [],
       template: (option) => JSON.stringify(option),
+      prefix: "",
       ...config,
       harPath: resolve(process.cwd(), config.harPath),
       outPutDir: resolve(process.cwd(), config.outPutDir),
@@ -102,34 +103,49 @@ class GenerateCode {
   }
 
   private initData() {
-    const { harPath, supportMethods, dynamicApiList } = this.config;
+    const { harPath, supportMethods, dynamicApiList, prefix } = this.config;
 
     const json = require(harPath);
 
-    const filteredRequests = (json?.log?.entries ?? []).filter(
-      (item: any) =>
-        item._resourceType === "xhr" &&
-        item.response.status >= 200 &&
-        item.response.status < 300 &&
-        supportMethods
-          .map((item) => item.toUpperCase())
-          .includes(item.request.method)
-    );
+    const filteredRequests: {
+      method: Method;
+      pathname: string;
+      text: string;
+    }[] = (json?.log?.entries ?? [])
+      .map(
+        ({
+          _resourceType,
+          response: { status, content },
+          request: { method, url },
+        }: any) => {
+          const pathname = new URL(url).pathname;
+          const flag =
+            _resourceType === "xhr" &&
+            status >= 200 &&
+            status < 300 &&
+            pathname.startsWith(prefix) &&
+            supportMethods.map((item) => item.toUpperCase()).includes(method);
 
-    // '/api/v1/product/:name/user/list' => /api/v1/product/[\\w.-]+/user/list/$
+          if (!flag) {
+            return false;
+          } else {
+            return {
+              method: method.toLowerCase(),
+              pathname: pathname,
+              text: content.text,
+            };
+          }
+        }
+      )
+      .filter(Boolean);
+
+    // '/product/:name_-c/user/list' => /product/[\\w\-\.]+/user/list/$
     const dynamicApiRegExps = dynamicApiList.map(
-      (item) => new RegExp(`^${item.replace(/:\w+/g, "[\\w.-]+")}$`)
+      (item) => new RegExp(`^${item.replace(/:[\w\-]+/g, "[\\w\\-\\.]+")}$`)
     );
 
-    filteredRequests.reduce((acc: Data, cur: any) => {
-      const {
-        request: { method, url },
-        response: {
-          content: { text },
-        },
-      } = cur;
-
-      const pathname = new URL(url).pathname;
+    filteredRequests.reduce((acc: Data, cur) => {
+      const { method, pathname, text } = cur;
 
       let api;
       let dir;
@@ -141,14 +157,14 @@ class GenerateCode {
       if (matchRegExpIndex !== -1) {
         const matchDynamicApi = dynamicApiList[matchRegExpIndex];
         api = matchDynamicApi;
-        // '/api/v1/product/:user/user/list/' => /api/v1/product/[user]/user/list/
-        dir = matchDynamicApi.replace(/(:\w+)/, (a) => {
+        // '/api/v1/product/:user-_/user/list/' => /api/v1/product/[user_-]/user/list/
+        dir = matchDynamicApi.replace(/(:[\w\-]+)/, (a) => {
           return `[${a.replace(":", "")}]`;
         });
       } else {
-        // '/api/v1/123123' => '/api/v1/:id'
+        // '/api/v1/2876' => '/:id'
         api = pathname.replace(/\/\d+/g, "/:id");
-        // '/api/v1/123123' => '/api/v1/[id]'
+        // '/api/v1/2876' => '/v1/[id]'
         dir = pathname.replace(/\/\d+/g, "/[id]");
       }
 
@@ -156,7 +172,7 @@ class GenerateCode {
         text,
         dir,
         api,
-        method: method.toLowerCase(),
+        method,
       });
       return acc;
     }, this.data);
@@ -194,7 +210,7 @@ class GenerateCode {
    * 写入目录中的内容
    */
   private writeContent(dir: string, item: Item) {
-    const { template, apiFileExtensions, cover } = this.config;
+    const { template, apiFileExtensions, cover, prefix } = this.config;
     const { api, method, text } = item;
 
     const apiPath = join(dir, `${method}${apiFileExtensions}`);
@@ -215,7 +231,7 @@ class GenerateCode {
 
     let writeFilePromise = Promise.resolve();
     let writeDataPromise = Promise.resolve();
-    const functionName = getFunctionNameByAPI(api, method);
+    const functionName = getFunctionNameByAPI(api.slice(prefix.length), method);
     if (coverApi) {
       writeFilePromise = writeFile(
         apiPath,

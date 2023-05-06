@@ -2,4 +2,5 @@ __mocks__
 .vscode
 dist
 node_modules
-harToApi.config.js
+har-to-api.config.js
+htc-test.devops.hypers.cc.har
