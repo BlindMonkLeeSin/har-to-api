@@ -1,6 +1,6 @@
 {
   "name": "har-to-api",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "This is a tool to convert har into api according to template",
   "main": "index.ts",
   "bin": {
